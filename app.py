@@ -46,9 +46,25 @@ with st.sidebar:
     st.write(f"经验值: {st.session_state.exp % 100} / 100")
     st.progress(min((st.session_state.exp % 100) / 100, 1.0))
 
+# --- 云端/本地自适应获取 Key 逻辑 ---
+# 优先级：1. 环境变量(Secrets) > 2. 用户手动输入
+api_key_from_secrets = st.secrets.get("ZHIPU_AI_KEY", "")
+
+with st.sidebar:
+    st.title("⚙️ 智教控制台")
+    # 如果云端配置了 Secret，就自动填充，否则让用户输入
+    user_input_key = st.text_input(
+        "🔑 智谱 API Key", 
+        value=api_key_from_secrets if api_key_from_secrets else "",
+        type="password"
+    )
+    # ... 其余代码不变 ...
+
+# 初始化客户端使用用户最终确定的 Key
+final_key = user_input_key if user_input_key else api_key_from_secrets
 client = None
-if api_key:
-    client = OpenAI(api_key=api_key, base_url="https://open.bigmodel.cn/api/paas/v4")
+if final_key:
+    client = OpenAI(api_key=final_key, base_url="https://open.bigmodel.cn/api/paas/v4")
 
 st.title("🎓 AI 智教：基于北科大方案的全周期路径系统")
 

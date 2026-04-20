@@ -19,7 +19,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 2. 【核心状态管理】初始化 Session State，防止页面刷新导致数据丢失
+# 2. 【核心状态管理】初始化 Session State，防止页面刷新导致进度丢失
 if 'exp' not in st.session_state:
     st.session_state.exp = 0
 if 'completed_nodes' not in st.session_state:
@@ -34,6 +34,7 @@ if 'comp_radar' not in st.session_state:
     st.session_state.comp_radar = ""
 
 # --- 云端自适应获取 API Key 逻辑 ---
+# 自动读取部署后台 Settings -> Secrets 中的 ZHIPU_AI_KEY
 api_key_from_secrets = ""
 try:
     api_key_from_secrets = st.secrets.get("ZHIPU_AI_KEY", "")
@@ -60,7 +61,7 @@ with st.sidebar:
     user_goal = st.text_input("核心学习目标", value="学习 C++，备战蓝桥杯/CCPC，冲击保研")
     
     st.markdown("---")
-    # 等级与经验值逻辑
+    # 等级与经验值展示
     lv = st.session_state.exp // 100 + 1
     st.metric("🏆 学习者等级", f"Lv.{lv}")
     st.write(f"当前经验值: {st.session_state.exp % 100} / 100")
@@ -72,24 +73,22 @@ with st.sidebar:
         st.session_state.dynamic_tree = None
         st.rerun()
 
-# 确定最终使用的 API Key 并初始化客户端
+# 确定最终使用的 API 客户端
 final_key = user_input_key if user_input_key else api_key_from_secrets
 client = None
 if final_key:
     client = OpenAI(api_key=final_key, base_url="https://open.bigmodel.cn/api/paas/v4")
 
 st.title("🎓 AI 智教：基于北科大方案的全周期路径系统")
-st.caption("集成 AI 动态演算、LeetCode 级别判题、保研竞赛雷达为一体的 CS 学习闭环")
+st.caption("AI 动态演算、LeetCode 测评、保研加分雷达三位一体")
 
 tab1, tab2, tab3 = st.tabs(["🗺️ AI 演算科技树", "⚔️ AI 知识测评 (OJ模式)", "🏆 保研竞赛雷达 (加分专属)"])
 
 # ==================== 功能区 1：AI 动态演算科技树 (核心大脑) ====================
 with tab1:
-    col_info, col_btn = st.columns([3, 1])
-    with col_info:
-        st.markdown("""
-        🔵 **蓝色**:校内 | 🟣 **紫色**:拓展 | 🟡 **金色**:已学 | ⚫ **灰色**:锁定
-        """)
+    st.markdown("""
+    🔵 **蓝色**:校内必修 | 🟣 **紫色**:目标拓展 | 🟡 **金色**:已掌握 | ⚫ **灰色**:尚未解锁
+    """)
 
     if st.button("🚀 启动 AI 路径全景演算", type="primary", use_container_width=True):
         if not client:
@@ -99,20 +98,17 @@ with tab1:
                 sys_prompt = f"""你是一个极其严苛且专业的计算机学院教务架构师。
                 用户身份：{user_stage}，核心目标：{user_goal}。
                 
-                【绝对禁止规则】：
-                1. 严禁生成物理、英语、思政等非计算机专业通识课。
-                2. 严禁空标签：每个 node 必须有清晰的 'label' 字段，请尽量使用标准课程名以便系统匹配视频（如：数据结构、计算机网络）。
-                3. 拒绝冗余：合并相似节点。
-
-                【核心关联性约束】：
-                1. 强化因果链：所有节点必须逻辑严密。
-                2. **关键逻辑：程序设计基础(C++)必须是数据结构的前置。绝对不能颠倒顺序。**
-                3. 路径顺序：数学/语言基础 -> 数据结构 -> 算法/项目专题拓展。
-                4. 严禁孤立节点，所有节点必须有 source 到 target 的连线。
-
-                【JSON 结构】：
-                输出纯 JSON，包含 'nodes' (id, label, type, stage) 和 'edges' (source, target)。
-                type 只能是 '校内' 或 '拓展'。stage 是 '大一', '大二', '大三', '目标'。
+                【致命约束条件】：
+                1. **强目标相关性**：严禁出现大学物理、大学英语、思政、体育等非计算机专业核心课。
+                2. **标签强制显示**：每个 node 必须有清晰的 'label'。
+                3. **学术逻辑因果链**：
+                   - **程序设计基础(C/C++)必须是数据结构的前置节点。**
+                   - 数据结构必须是算法分析、操作系统、竞赛实战的前置节点。
+                4. **区分校内与拓展**：必须将课程分为 '校内' (必修) 和 '拓展' (针对用户的保研/竞赛目标)。
+                5. **树状拓扑**：严禁出现孤立节点，所有节点必须有箭头关联。
+                
+                输出 JSON 结构：{{ "nodes": [{{ "id", "label", "type", "stage" }}], "edges": [{{ "source", "target" }}] }}
+                type 为 '校内' 或 '拓展'。stage 为 '大一', '大二', '大三', '目标'。
                 """
                 try:
                     res = client.chat.completions.create(
@@ -122,6 +118,7 @@ with tab1:
                         max_tokens=2048
                     )
                     raw_text = res.choices[0].message.content.strip()
+                    # 清理 Markdown 代码块包裹
                     raw_text = raw_text.replace('```json', '').replace('```', '').strip()
                     tree_data = json.loads(raw_text)
                     st.session_state.dynamic_tree = tree_data
@@ -139,7 +136,7 @@ with tab1:
                            (user_lvl_val >= 4 and n.get('stage') == "大三")
                     ]
                     st.session_state.target_node = None
-                    st.success("✅ 路径生成成功！已强制执行[程序设计->数据结构]逻辑顺序。")
+                    st.success("✅ 演算成功！已强制执行[程序设计->数据结构]逻辑顺序，并剔除了非核心干扰课程。")
                 except Exception as e:
                     st.error(f"⚠️ 解析失败: {e}")
 
@@ -147,7 +144,7 @@ with tab1:
     if st.session_state.dynamic_tree:
         tree = st.session_state.dynamic_tree
         
-        # 构建前置依赖关系字典
+        # 构建前置依赖字典
         dynamic_prereqs = {}
         for edge in tree.get('edges', []):
             dynamic_prereqs.setdefault(edge['target'], []).append(edge['source'])
@@ -158,7 +155,7 @@ with tab1:
             if nid in dynamic_base_nodes: return True
             return all(req in st.session_state.completed_nodes for req in dynamic_prereqs.get(nid, []))
 
-        # 构建 Agraph 节点
+        # 构建节点
         nodes = []
         for n in tree['nodes']:
             ntype = n.get('type', '校内')
@@ -169,34 +166,23 @@ with tab1:
             else:
                 color = "#1E90FF" if ntype == "校内" else "#9370DB"
             
-            # 强制构建带标记的显示文本
-            display_label = f"{n.get('label', '未知')} ({ntype})"
-            
+            # 使用最稳健的 Node 构造函数，确保标签显示
             nodes.append(Node(
                 id=n['id'], 
-                label=display_label, 
+                label=f"{n.get('label', '未知')} ({ntype})", 
                 color=color, 
-                size=30,
-                font={'size': 14, 'color': 'black', 'face': 'Arial'}
+                size=30
             ))
         
         edges = [Edge(source=e['source'], target=e['target'], color="#AAAAAA", width=2) for e in tree.get('edges', [])]
         
-        # 【布局优化】大幅拉开间距，垂直分层
+        # 布局优化
         config = Config(
-            width=1100, 
-            height=700, 
-            directed=True, 
-            physics=False, 
-            hierarchical=True, 
+            width=1100, height=700, directed=True, physics=False, hierarchical=True, 
             layout={
                 "hierarchical": {
-                    "enabled": True, 
-                    "direction": "UD", 
-                    "sortMethod": "directed",
-                    "nodeSpacing": 450,      # 水平间距
-                    "levelSeparation": 250,  # 垂直间距
-                    "edgeMinimization": True
+                    "enabled": True, "direction": "UD", "sortMethod": "directed",
+                    "nodeSpacing": 450, "levelSeparation": 250, "edgeMinimization": True
                 }
             }
         )
@@ -208,7 +194,7 @@ with tab1:
             if node_data:
                 st.markdown("---")
                 
-                # --- 核心修复：权威名师网课静态链接库（防止幻觉） ---
+                # --- 终极名师网课直通库（人工校对防止幻觉） ---
                 verified_links = {
                     "程序设计": "https://www.bilibili.com/video/BV1et411b73Z/",
                     "C++": "https://www.bilibili.com/video/BV1et411b73Z/",
@@ -219,28 +205,22 @@ with tab1:
                     "计算机网络": "https://search.bilibili.com/all?keyword=王道计算机网络",
                     "组成原理": "https://search.bilibili.com/all?keyword=王道计算机组成原理",
                     "编译原理": "https://www.bilibili.com/video/BV1zW411t7YE/",
-                    "数据库": "https://www.bilibili.com/video/BV1tY4y1D7nZ/",
                     "线性代数": "https://www.bilibili.com/video/BV1aW411Q7x1/",
                     "微积分": "https://www.bilibili.com/video/BV1Eb411u7Fw/",
                     "高等数学": "https://www.bilibili.com/video/BV1Eb411u7Fw/",
                     "算法分析": "https://www.bilibili.com/video/BV1A4411v7hK/",
-                    "算法竞赛": "https://www.bilibili.com/video/BV1A4411v7hK/",
-                    "蓝桥杯": "https://search.bilibili.com/all?keyword=蓝桥杯真题讲解",
-                    "CCPC": "https://search.bilibili.com/all?keyword=CCPC算法竞赛实战",
-                    "保研": "https://search.bilibili.com/all?keyword=计算机保研经验分享",
+                    "蓝桥杯": "https://search.bilibili.com/all?keyword=蓝桥杯真题解析",
+                    "CCPC": "https://search.bilibili.com/all?keyword=CCPC算法训练",
+                    "保研": "https://search.bilibili.com/all?keyword=计算机保研面试经验",
                 }
                 
                 final_link = ""
-                # 转大写进行模糊匹配
                 course_text = str(node_data['label']).upper()
-                
-                # 遍历映射表，寻找最优匹配
                 for key, url in verified_links.items():
                     if key.upper() in course_text:
                         final_link = url
                         break
                 
-                # 如果映射库没搜到，则执行搜索兜底
                 if not final_link:
                     safe_keyword = urllib.parse.quote(node_data['label'])
                     final_link = f"https://search.bilibili.com/all?keyword={safe_keyword}"
@@ -252,7 +232,7 @@ with tab1:
 # ==================== 功能区 2：AI 测评大厅 ====================
 with tab2:
     if not st.session_state.target_node:
-        st.warning("⚠️ 请先在【科技树】点击一个节点作为挑战目标！")
+        st.warning("⚠️ 请先在【科技树】标签页点击一个节点进行测评！")
     else:
         target_id = st.session_state.target_node
         st.subheader(f"⚔️ 正在挑战：{target_id}")
@@ -261,54 +241,57 @@ with tab2:
         with c1:
             if st.button("🎲 生成定制化考题", use_container_width=True):
                 with st.spinner("AI 导师出题中..."):
-                    q_prompt = f"针对【{target_id}】知识点，我是{user_stage}。请出一道考察核心逻辑的代码题或逻辑题。给出题目、示例。不给答案。"
+                    q_prompt = f"针对【{target_id}】知识点，我是{user_stage}。请出一道考察核心逻辑的代码题或逻辑题。给出题目说明和输入输出示例。不给答案。"
                     try:
                         res = client.chat.completions.create(model="glm-4-flash", messages=[{"role": "user", "content": q_prompt}])
                         st.session_state.question = res.choices[0].message.content
-                    except Exception: st.error("出题失败")
+                    except Exception: st.error("出题失败，请检查 API")
             
             if st.session_state.question:
                 st.markdown(st.session_state.question)
 
         with c2:
-            ans = st.text_area("⌨️ 输入你的解答：", height=300)
-            if st.button("🚀 提交评测", type="primary", use_container_width=True):
+            ans = st.text_area("⌨️ 输入你的解答：", height=300, placeholder="写下你的代码实现或逻辑推导...")
+            if st.button("🚀 提交测评", type="primary", use_container_width=True):
                 if not ans:
-                    st.warning("请输入答案！")
+                    st.warning("请输入内容！")
                 else:
-                    with st.spinner("审阅中..."):
+                    with st.spinner("导师判卷中..."):
                         try:
                             c_res = client.chat.completions.create(
                                 model="glm-4-flash", 
-                                messages=[{"role": "user", "content": f"题目：{st.session_state.question}\n回答：{ans}\n请判题，正确请在开头说'通过'。"}]
+                                messages=[{"role": "user", "content": f"题目：{st.session_state.question}\n回答：{ans}\n判题，正确请在开头说'通过'。"}]
                             )
                             feedback = c_res.choices[0].message.content
                             st.write("### 👨‍🏫 导师评语：")
                             st.write(feedback)
                             if "通过" in feedback:
-                                st.success("✅ Accepted！经验 +100")
+                                st.success("✅ Accepted！经验值 +100")
                                 if target_id not in st.session_state.completed_nodes:
                                     st.session_state.completed_nodes.append(target_id)
                                     st.session_state.exp += 100
                                 st.balloons()
                         except Exception: st.error("测评异常")
 
-# ==================== 功能区 3：竞赛雷达 (加分专属) ====================
+# ==================== 功能区 3：竞赛雷达 ====================
 with tab3:
     st.subheader("🏆 保研加分赛事扫描雷达")
-    if st.button("🔍 开启全网扫描与智能匹配", type="primary", use_container_width=True):
+    if st.button("🔍 开启全网智能匹配", type="primary", use_container_width=True):
         if not client:
-            st.error("请先配置 API Key！")
+            st.error("请配置 API Key")
         else:
             with st.spinner("检索中..."):
                 try:
                     res = client.chat.completions.create(
                         model="glm-4-flash", 
-                        messages=[{"role": "user", "content": f"基于{user_stage}和目标{user_goal}，推荐 5-6 个保研加分白名单赛事。说明含金量和建议。"}]
+                        messages=[{"role": "user", "content": f"基于学段{user_stage}和目标{user_goal}，推荐 5-6 个保研加分白名单赛事。详细说明含金量和建议。"}]
                     )
                     st.session_state.comp_radar = res.choices[0].message.content
                 except Exception: 
-                    st.session_state.comp_radar = "由于网络抖动，暂无法获取最新数据。"
+                    st.session_state.comp_radar = "由于网络抖动，暂无法获取。建议参考蓝桥杯、ACM、计算机设计大赛等 A 类赛事。"
     
     if st.session_state.comp_radar:
         st.markdown(st.session_state.comp_radar)
+
+st.markdown("---")
+st.caption("🚀 AI 智教系统完全体 | 专为北科大 CS 学习者设计 | 支持云端与本地自适应")

@@ -101,8 +101,8 @@ with tab1:
                 
                 【绝对禁止规则】：
                 1. 严禁生成物理、英语、思政等非计算机专业通识课。
-                2. 严禁空标签：每个 node 必须有清晰的 'label' 字段，且文字必须显示。
-                3. 拒绝冗余：合并相似节点。例如不要同时出现“C++”和“程序设计基础”。
+                2. 严禁空标签：每个 node 必须有清晰的 'label' 字段，请尽量使用标准课程名以便系统匹配视频（如：数据结构、计算机网络）。
+                3. 拒绝冗余：合并相似节点。
 
                 【核心关联性约束】：
                 1. 强化因果链：所有节点必须逻辑严密。
@@ -208,29 +208,39 @@ with tab1:
             if node_data:
                 st.markdown("---")
                 
-                # 名师网课链接匹配
+                # --- 核心修复：权威名师网课静态链接库（防止幻觉） ---
                 verified_links = {
                     "程序设计": "https://www.bilibili.com/video/BV1et411b73Z/",
                     "C++": "https://www.bilibili.com/video/BV1et411b73Z/",
                     "C语言": "https://www.bilibili.com/video/BV1q54y1q79w/",
-                    "离散数学": "https://www.bilibili.com/video/BV1kx411D71x/", # 屈婉玲教授
-                    "数据结构": "https://www.bilibili.com/video/BV1JW411i731/",
-                    "操作系统": "https://www.bilibili.com/video/BV1YE411D7nH/",
-                    "计算机网络": "https://www.bilibili.com/video/BV19E411D78Q/",
+                    "离散数学": "https://www.bilibili.com/video/BV1kx411D71x/", # 屈婉玲
+                    "数据结构": "https://search.bilibili.com/all?keyword=王道数据结构",
+                    "操作系统": "https://search.bilibili.com/all?keyword=王道操作系统",
+                    "计算机网络": "https://search.bilibili.com/all?keyword=王道计算机网络",
+                    "组成原理": "https://search.bilibili.com/all?keyword=王道计算机组成原理",
+                    "编译原理": "https://www.bilibili.com/video/BV1zW411t7YE/",
+                    "数据库": "https://www.bilibili.com/video/BV1tY4y1D7nZ/",
                     "线性代数": "https://www.bilibili.com/video/BV1aW411Q7x1/",
                     "微积分": "https://www.bilibili.com/video/BV1Eb411u7Fw/",
+                    "高等数学": "https://www.bilibili.com/video/BV1Eb411u7Fw/",
+                    "算法分析": "https://www.bilibili.com/video/BV1A4411v7hK/",
                     "算法竞赛": "https://www.bilibili.com/video/BV1A4411v7hK/",
-                    "蓝桥杯": "https://search.bilibili.com/all?keyword=蓝桥杯真题精讲",
-                    "CCPC": "https://search.bilibili.com/all?keyword=CCPC算法竞赛入门",
+                    "蓝桥杯": "https://search.bilibili.com/all?keyword=蓝桥杯真题讲解",
+                    "CCPC": "https://search.bilibili.com/all?keyword=CCPC算法竞赛实战",
+                    "保研": "https://search.bilibili.com/all?keyword=计算机保研经验分享",
                 }
                 
                 final_link = ""
-                course_text = (node_data['label']).upper()
+                # 转大写进行模糊匹配
+                course_text = str(node_data['label']).upper()
+                
+                # 遍历映射表，寻找最优匹配
                 for key, url in verified_links.items():
                     if key.upper() in course_text:
                         final_link = url
                         break
                 
+                # 如果映射库没搜到，则执行搜索兜底
                 if not final_link:
                     safe_keyword = urllib.parse.quote(node_data['label'])
                     final_link = f"https://search.bilibili.com/all?keyword={safe_keyword}"

@@ -34,7 +34,6 @@ if 'comp_radar' not in st.session_state:
     st.session_state.comp_radar = ""
 
 # --- 云端自适应获取 API Key 逻辑 ---
-# 优先级：1. 环境变量(Secrets) > 2. 用户手动输入
 api_key_from_secrets = ""
 try:
     api_key_from_secrets = st.secrets.get("ZHIPU_AI_KEY", "")
@@ -89,11 +88,7 @@ with tab1:
     col_info, col_btn = st.columns([3, 1])
     with col_info:
         st.markdown("""
-        **图谱图例说明：**
-        - 🔵 **蓝色节点**：校内必修课程 (核心基础)
-        - 🟣 **紫色节点**：竞赛/保研拓展 (目标进阶)
-        - 🟡 **金色节点**：已完成/免修
-        - ⚫ **灰色节点**：前置未完成，尚未解锁
+        🔵 **蓝色**:校内 | 🟣 **紫色**:拓展 | 🟡 **金色**:已学 | ⚫ **灰色**:锁定
         """)
 
     if st.button("🚀 启动 AI 路径全景演算", type="primary", use_container_width=True):
@@ -104,17 +99,20 @@ with tab1:
                 sys_prompt = f"""你是一个极其严苛且专业的计算机学院教务架构师。
                 用户身份：{user_stage}，核心目标：{user_goal}。
                 
-                【生成规则】：
-                1. **强目标相关性**：所有节点必须严格服务于用户的核心目标。除非是计算机科学、算法竞赛或保研面试的必需基础（如离散数学、数据结构、线性代数），否则严禁加入大学物理、大学英语、思政等无关通识课。
-                2. **区分校内与拓展**：必须将课程分为 '校内' (官方核心课) 和 '拓展' (针对用户的竞赛/保研目标的专项训练)。
-                3. **强化关联性与因果链 (核心约束)**：
-                   - 严禁出现孤立节点。路径必须符合学术逻辑。
-                   - **绝对约束：程序设计基础（语言入门）必须是数据结构的前置节点。绝对禁止将数据结构放在程序设计基础之前。**
-                   - 路径顺序：数学/语言基础 -> 数据结构 -> 算法/项目专题拓展。
-                   - 每个'拓展'节点必须至少有一个相关'校内'课作为逻辑前置。
-                4. **拒绝冗余**：合并相似节点。例如不要同时出现“C++”和“程序设计基础”。
-                5. **JSON 结构**：输出纯 JSON，包含 'nodes' (id, label, type, stage) 和 'edges' (source, target)。
-                6. type 只能是 '校内' 或 '拓展'。stage 是 '大一', '大二', '大三', '目标'。
+                【绝对禁止规则】：
+                1. 严禁生成物理、英语、思政等非计算机专业通识课。
+                2. 严禁空标签：每个 node 必须有清晰的 'label' 字段，且文字必须显示。
+                3. 拒绝冗余：合并相似节点。例如不要同时出现“C++”和“程序设计基础”。
+
+                【核心关联性约束】：
+                1. 强化因果链：所有节点必须逻辑严密。
+                2. **关键逻辑：程序设计基础(C++)必须是数据结构的前置。绝对不能颠倒顺序。**
+                3. 路径顺序：数学/语言基础 -> 数据结构 -> 算法/项目专题拓展。
+                4. 严禁孤立节点，所有节点必须有 source 到 target 的连线。
+
+                【JSON 结构】：
+                输出纯 JSON，包含 'nodes' (id, label, type, stage) 和 'edges' (source, target)。
+                type 只能是 '校内' 或 '拓展'。stage 是 '大一', '大二', '大三', '目标'。
                 """
                 try:
                     res = client.chat.completions.create(
@@ -124,7 +122,6 @@ with tab1:
                         max_tokens=2048
                     )
                     raw_text = res.choices[0].message.content.strip()
-                    # 清理 Markdown 代码块包裹
                     raw_text = raw_text.replace('```json', '').replace('```', '').strip()
                     tree_data = json.loads(raw_text)
                     st.session_state.dynamic_tree = tree_data
@@ -142,7 +139,7 @@ with tab1:
                            (user_lvl_val >= 4 and n.get('stage') == "大三")
                     ]
                     st.session_state.target_node = None
-                    st.success("✅ 演算成功！已根据你的学段和目标逻辑生成了正确的技能树。")
+                    st.success("✅ 路径生成成功！已强制执行[程序设计->数据结构]逻辑顺序。")
                 except Exception as e:
                     st.error(f"⚠️ 解析失败: {e}")
 
@@ -172,11 +169,20 @@ with tab1:
             else:
                 color = "#1E90FF" if ntype == "校内" else "#9370DB"
             
-            nodes.append(Node(id=n['id'], label=f"{n['label']}\n[{ntype}]", color=color, size=35))
+            # 强制构建带标记的显示文本
+            display_label = f"{n.get('label', '未知')} ({ntype})"
+            
+            nodes.append(Node(
+                id=n['id'], 
+                label=display_label, 
+                color=color, 
+                size=30,
+                font={'size': 14, 'color': 'black', 'face': 'Arial'}
+            ))
         
-        edges = [Edge(source=e['source'], target=e['target'], color="#AAAAAA") for e in tree.get('edges', [])]
+        edges = [Edge(source=e['source'], target=e['target'], color="#AAAAAA", width=2) for e in tree.get('edges', [])]
         
-        # 【布局优化】大幅拉开 nodeSpacing 间距，彻底消除文字重叠
+        # 【布局优化】大幅拉开间距，垂直分层
         config = Config(
             width=1100, 
             height=700, 
@@ -202,7 +208,7 @@ with tab1:
             if node_data:
                 st.markdown("---")
                 
-                # --- 千万播放级名师网课直通库 ---
+                # 名师网课链接匹配
                 verified_links = {
                     "程序设计": "https://www.bilibili.com/video/BV1et411b73Z/",
                     "C++": "https://www.bilibili.com/video/BV1et411b73Z/",
@@ -211,9 +217,6 @@ with tab1:
                     "数据结构": "https://www.bilibili.com/video/BV1JW411i731/",
                     "操作系统": "https://www.bilibili.com/video/BV1YE411D7nH/",
                     "计算机网络": "https://www.bilibili.com/video/BV19E411D78Q/",
-                    "组成原理": "https://www.bilibili.com/video/BV1c4411w7nd/",
-                    "编译原理": "https://www.bilibili.com/video/BV1zW411t7YE/",
-                    "数据库": "https://www.bilibili.com/video/BV1tY4y1D7nZ/",
                     "线性代数": "https://www.bilibili.com/video/BV1aW411Q7x1/",
                     "微积分": "https://www.bilibili.com/video/BV1Eb411u7Fw/",
                     "算法竞赛": "https://www.bilibili.com/video/BV1A4411v7hK/",
@@ -234,16 +237,12 @@ with tab1:
                 
                 st.info(f"📍 选中节点：{node_data['label']} ({node_data.get('type', '校内')})")
                 st.markdown(f"👉 **网课直通车：** [{node_data['label']} (点击直达▶️)]({final_link})")
-                
-                if clicked in st.session_state.completed_nodes:
-                    st.success("🎉 该节点已点亮掌握！")
-                
                 st.session_state.target_node = clicked
 
-# ==================== 功能区 2：AI 知识测评 (OJ模式) ====================
+# ==================== 功能区 2：AI 测评大厅 ====================
 with tab2:
     if not st.session_state.target_node:
-        st.warning("⚠️ 请先在【演算科技树】点击一个节点作为挑战目标！")
+        st.warning("⚠️ 请先在【科技树】点击一个节点作为挑战目标！")
     else:
         target_id = st.session_state.target_node
         st.subheader(f"⚔️ 正在挑战：{target_id}")
@@ -262,8 +261,8 @@ with tab2:
                 st.markdown(st.session_state.question)
 
         with c2:
-            ans = st.text_area("⌨️ 输入你的解析或代码实现：", height=300, placeholder="在此编写你的答案...")
-            if st.button("🚀 提交并评测", type="primary", use_container_width=True):
+            ans = st.text_area("⌨️ 输入你的解答：", height=300)
+            if st.button("🚀 提交评测", type="primary", use_container_width=True):
                 if not ans:
                     st.warning("请输入答案！")
                 else:
@@ -271,13 +270,13 @@ with tab2:
                         try:
                             c_res = client.chat.completions.create(
                                 model="glm-4-flash", 
-                                messages=[{"role": "user", "content": f"题目：{st.session_state.question}\n我的回答：{ans}\n请判题，正确请在开头说'通过'。"}]
+                                messages=[{"role": "user", "content": f"题目：{st.session_state.question}\n回答：{ans}\n请判题，正确请在开头说'通过'。"}]
                             )
                             feedback = c_res.choices[0].message.content
                             st.write("### 👨‍🏫 导师评语：")
                             st.write(feedback)
                             if "通过" in feedback:
-                                st.success("✅ Accepted！该技能点已掌握，经验 +100")
+                                st.success("✅ Accepted！经验 +100")
                                 if target_id not in st.session_state.completed_nodes:
                                     st.session_state.completed_nodes.append(target_id)
                                     st.session_state.exp += 100
@@ -299,7 +298,7 @@ with tab3:
                     )
                     st.session_state.comp_radar = res.choices[0].message.content
                 except Exception: 
-                    st.session_state.comp_radar = "网络抖动，建议重试或查看本地核心库。"
+                    st.session_state.comp_radar = "由于网络抖动，暂无法获取最新数据。"
     
     if st.session_state.comp_radar:
         st.markdown(st.session_state.comp_radar)
